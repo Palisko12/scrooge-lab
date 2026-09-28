@@ -21,7 +21,7 @@ def inspect(archive: Path):
             digest.update(chunk)
     out = {"status": "SCHEMA_AUDIT_ONLY_NOT_BACKTEST",
            "archive_sha256": digest.hexdigest(), "archive_bytes": archive.stat().st_size,
-           "members": [], "parquet_files": []}
+           "members": [], "parquet_files": [], "parquet_errors": []}
     with tarfile.open(archive, "r:gz") as tar:
         for m in tar:
             if m.name.startswith("/") or ".." in Path(m.name).parts:
@@ -35,7 +35,18 @@ def inspect(archive: Path):
                 p = Path(td) / "one.parquet"
                 with tar.extractfile(m) as src, p.open("wb") as dst:
                     shutil.copyfileobj(src, dst)
-                pf = pq.ParquetFile(p)
+                try:
+                    pf = pq.ParquetFile(p)
+                except Exception as exc:
+                    with p.open("rb") as raw:
+                        head = raw.read(16).hex()
+                        raw.seek(max(0, p.stat().st_size - 16))
+                        foot = raw.read(16).hex()
+                    problem = {"name": m.name, "bytes": m.size, "error_type": type(exc).__name__,
+                               "error": str(exc), "head16_hex": head, "tail16_hex": foot}
+                    print("PARQUET_READ_ERROR", json.dumps(problem), flush=True)
+                    out["parquet_errors"].append(problem)
+                    continue
                 names = pf.schema_arrow.names
                 out["parquet_files"].append({
                     "name": m.name,
@@ -48,6 +59,7 @@ def inspect(archive: Path):
                 })
     out["member_count"] = len(out["members"])
     out["parquet_count"] = len(out["parquet_files"])
+    out["parquet_error_count"] = len(out["parquet_errors"])
     out["total_parquet_rows"] = sum(p["rows"] for p in out["parquet_files"])
     out["limitations"] = [
         "Schema and metadata only; timestamps, OHLC consistency, missing bars, and leakage NOT YET validated.",
@@ -67,6 +79,7 @@ if __name__ == "__main__":
     print("Archive SHA256:", result["archive_sha256"])
     print("Archive members:", result["member_count"])
     print("Parquet files:", result["parquet_count"])
+    print("Unreadable Parquet files:", result["parquet_error_count"])
     print("Total parquet rows:", result["total_parquet_rows"])
     for p in result["parquet_files"]:
         print(p["name"], "rows=", p["rows"], "OHLCV=", p["ohlcv_candidates"], "bid/ask=", p["bid_ask_candidates"])
