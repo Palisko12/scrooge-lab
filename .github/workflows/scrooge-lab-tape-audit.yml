@@ -1,0 +1,31 @@
+name: SCROOGE LAB Trade Tape Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tape-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OANDA_API_URL: ""
+      OANDA_API_TOKEN: ""
+      OANDA_ACCOUNT_ID: ""
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Audit published historical closed-trade tape (offline)
+        run: |
+          python research/tools/scrooge_lab_trade_audit.py --first 100 --output scrooge-trade-audit-100.json
+          python research/tools/scrooge_lab_trade_audit.py --first 0 --output scrooge-trade-audit-all.json
+      - name: Upload accounting reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrooge-trade-tape-audit
+          path: scrooge-trade-audit-*.json
