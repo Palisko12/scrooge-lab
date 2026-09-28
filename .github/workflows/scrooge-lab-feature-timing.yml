@@ -1,0 +1,38 @@
+name: SCROOGE LAB Feature Timing Probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OANDA_API_TOKEN: ""
+      OANDA_ACCOUNT_ID: ""
+      OANDA_API_URL: ""
+      ARCHIVE_URL: "https://www.dropbox.com/scl/fo/uyjwoj274ndzqg98ol72p/AASdDu-e2iECRnN6D0mLmJ4/research-corpora/qtl-discovery-8yr.tar.gz?rlkey=a06ocaqxuyz4at1dfkjmww1i9&dl=1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Parquet reader
+        run: python -m pip install "pyarrow>=17,<25"
+      - name: Download public QTL archive
+        run: |
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 2400 \
+            --silent --show-error --output qtl-discovery-8yr.tar.gz "$ARCHIVE_URL"
+          file qtl-discovery-8yr.tar.gz
+      - name: Produce feature column and clock-alignment fingerprints
+        run: python research/tools/scrooge_lab_feature_timing.py qtl-discovery-8yr.tar.gz
+      - name: Upload feature timing report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrooge-feature-timing
+          path: scrooge-feature-timing.json
+          if-no-files-found: warn
