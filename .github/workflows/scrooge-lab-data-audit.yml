@@ -1,0 +1,39 @@
+name: SCROOGE LAB Historical Data Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      OANDA_API_TOKEN: ""
+      OANDA_ACCOUNT_ID: ""
+      OANDA_API_URL: ""
+      ARCHIVE_URL: "https://www.dropbox.com/scl/fo/uyjwoj274ndzqg98ol72p/AAUDTW6mcMjm9XJsLa0jSjw/research-corpora/allbars_corpus.tar.gz?rlkey=a06ocaqxuyz4at1dfkjmww1i9&st=wd7hzvnh&dl=1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Parquet reader
+        run: python -m pip install "pyarrow>=17,<25"
+      - name: Download public historical data archive
+        run: |
+          curl --fail --location --retry 3 --max-time 480 --silent --show-error \
+            --output allbars_corpus.tar.gz "$ARCHIVE_URL"
+          file allbars_corpus.tar.gz
+          tar -tzf allbars_corpus.tar.gz | head -20
+      - name: Audit all currency-pair Parquet tables (offline)
+        run: python research/tools/scrooge_lab_data_audit.py allbars_corpus.tar.gz --output scrooge-data-audit.json
+      - name: Upload JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrooge-historical-data-audit
+          path: scrooge-data-audit.json
+          if-no-files-found: warn
